@@ -15,4 +15,5 @@
                                    [com.ninjudd/ring-async  "0.2.0"]
                                    [expectations  "2.0.6"]
                                    [compojure  "1.1.8"]]
-                   :source-paths ["test_src"]}})
+                   :source-paths ["test_src"]
+                   :codox {:sources ["src"]}}})
