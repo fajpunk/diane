@@ -20,4 +20,4 @@ Copyright © 2014 Dan Fuchs
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
 
-[API docs]: <http://ptaoussanis.github.io/timbre/>
+[API docs]: <http://fajpunk.github.io/diane/>
