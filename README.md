@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/fajpunk/diane.svg?branch=master)](https://travis-ci.org/fajpunk/diane)
+
 # diane
 
 Server-Side Server-Sent-Event client
