@@ -8,7 +8,6 @@
 
 ;; TODO:
 ;; - Handle unicode chars up to 0x10FFFF
-;; - Actually parse as UTF8
 ;; - Error handling and fault tolerance of any kind
 ;;   - At least close the gosh darn reader!!
 ;; - Reconnect
@@ -17,6 +16,10 @@
 ;; - Allow buffer size(/type?) to be passed in
 ;; - Handle different line endings (Maybe does this already?)
 ;; - Handle all of the HTTP processing model in section 5 of the spec
+;; - Indicate state of connection
+;; - Redirects exactly according to the spec
+;;   - just automatically follows them for now, but will always request
+;;     the original URL on reconnect
 
 (defn- comment? [line]
   (= (first line) \:))
@@ -88,6 +91,12 @@
       (let [[new-event-name new-data-buffer new-last-id] (process-field line event-name data-buffer last-id retry)]
         (recur (.readLine stream) new-event-name new-data-buffer new-last-id)))))
 
+(defn- ok-status? [status]
+  (= \2 (first (str status))))
+
+(defn- valid-content-type? [headers]
+  (= "text/event-stream" (get headers "Content-Type")))
+
 (defn subscribe
   "Returns a channel onto which will be put Server Side Events from the stream
   obtained by issueing a get request with clj-http to url with options.
@@ -96,10 +105,24 @@
   makes sense on the server side.
   "
   [url options]
-  (let [stream (io/reader (:body (client/get url (assoc options :as :stream))))
+  (let [default-options {:as :stream
+                         :headers {"Cache-Control" "no-cache"}}
+        all-options (merge default-options options)
         events (chan 25)
         retry (atom 3000)]
     (async/thread
-      (parse-event-stream stream events url retry)
-      (close! events))
+      (loop [{:keys [status body headers]} (client/get url all-options)]
+        (cond 
+          (and (= 200 status) (valid-content-type? headers))
+          (do 
+            (parse-event-stream (io/reader body) events url retry)
+            (Thread/sleep @retry)
+            (recur [client/get url all-options]))
+
+          (and (ok-status? status) (valid-content-type? headers))
+          (do
+            (Thread/sleep @retry)
+            (recur [client/get url all-options]))
+
+          :else nil)))
     events))
