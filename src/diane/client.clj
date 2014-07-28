@@ -107,7 +107,10 @@
   (Thread/sleep (:reconnection-time @client-state)))
 
 (defn- reconnect-options [options client-state]
-  (assoc-in options [:headers "Last-Event-ID"] (:last-event-id @client-state)))
+  (let [last-event-id (:last-event-id @client-state)]
+    (if (empty? last-event-id)
+      options
+      (assoc-in options [:headers "Last-Event-ID"] (:last-event-id @client-state)))))
 
 (defn subscribe
   "Returns a channel onto which will be put Server Side Events from the stream
