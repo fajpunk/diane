@@ -16,10 +16,10 @@
 (defn events-for
   "Returns a vector of all of the events that would be put on a channel for
   stream represented by the given string"
-  [string & [retry]] 
+  [string & [client-state]] 
   (let [stream (make-stream string)
         event-chan (chan 10)]
-    (parse-event-stream stream event-chan "some-url" retry)
+    (parse-event-stream stream event-chan "some-url" client-state)
     (close! event-chan)
     (loop [events []
            value (<!! event-chan)]
@@ -63,13 +63,13 @@
         (events-for "id: some-id\ndata: Woohoo!\n\nid: another-id\ndata: Woohoo again!\n\ndata: No id on me.\n\n"))
 
 ;; Retry
-(let [retry (atom 1000)]
+(let [client-state (atom {:reconnection-time 1000})]
   (expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id  ""}]
-          (events-for "retry: 4000\ndata: Woohoo!\n\n" retry))
-  (expect 4000 @retry))
+          (events-for "retry: 4000\ndata: Woohoo!\n\n" client-state))
+  (expect 4000 (:reconnection-time @client-state)))
 
 ;; Retry with invalid value
-(let [retry (atom 1000)]
+(let [client-state (atom {:reconnection-time 1000})]
   (expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id  ""}]
-          (events-for "retry: 4000blah\ndata: Woohoo!\n\n" retry))
-  (expect 1000 @retry))
+          (events-for "retry: 4000blah\ndata: Woohoo!\n\n" client-state))
+  (expect 1000 (:reconnection-time @client-state)))

@@ -41,14 +41,14 @@
         value (strip-leading-space safe-value)]
     [field value]))
 
-(defn- set-retry! [retry value]
+(defn- set-reconnection-time! [client-state value]
   (when (re-find #"^\d+$" value)
-    (reset! retry (Integer. value))))
+    (swap! client-state assoc :reconnection-time (Integer. value))))
 
 (defn- process-field
   "Returns a vector of recur values based on the passed in values and the field
   in the line."
-  [line event-name data-buffer last-id retry]
+  [line event-name data-buffer last-id client-state]
   (let [[field value] (parse-field line)]
     (if (= value "")
       [nil "" last-id]
@@ -56,7 +56,7 @@
         "event" [value data-buffer last-id]
         "data" [event-name (str data-buffer value "\n") last-id]
         "id" [event-name data-buffer value]
-        "retry" (do (set-retry! retry value)
+        "retry" (do (set-reconnection-time! client-state value)
                   [event-name data-buffer last-id])
         [event-name data-buffer last-id]))))
 
@@ -67,7 +67,7 @@
      :event (or event-name "message")
      :last-event-id last-id}))
   
-(defn- parse-event-stream [stream channel url retry]
+(defn- parse-event-stream [stream channel url client-state]
   (loop
     [line (.readLine stream)
      event-name nil
@@ -87,7 +87,7 @@
         (recur (.readLine stream) nil "" last-id))
 
       :else
-      (let [[new-event-name new-data-buffer new-last-id] (process-field line event-name data-buffer last-id retry)]
+      (let [[new-event-name new-data-buffer new-last-id] (process-field line event-name data-buffer last-id client-state)]
         (recur (.readLine stream) new-event-name new-data-buffer new-last-id)))))
 
 (defn- ok-status? [status]
@@ -95,6 +95,10 @@
 
 (defn- valid-content-type? [headers]
   (= "text/event-stream" (get headers "Content-Type")))
+
+(def ready-state-map {:connecting 0
+                      :open 1
+                      :closed 2})
 
 (defn subscribe
   "Returns a channel onto which will be put Server Side Events from the stream
@@ -108,7 +112,9 @@
                          :headers {"Cache-Control" "no-cache"}}
         all-options (merge default-options options)
         events (chan 25)
-        retry (atom 3000)]
+        client-state (atom {:ready-state (:connecting ready-state-map)
+                            :last-event-id ""
+                            :reconnection-time 3000})]
     (async/thread
       (loop [{:keys [status body headers]} (client/get url all-options)]
         (tracef "Connected to %s" url)
@@ -116,15 +122,15 @@
           (and (= 200 status) (valid-content-type? headers))
           (do 
             (with-open [stream (io/reader body)]
-              (parse-event-stream stream events url retry))
-            (tracef "Reconnecting after %s milliseconds..." @retry)
-            (Thread/sleep @retry)
+              (parse-event-stream stream events url client-state))
+            (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
+            (Thread/sleep (:reconnection-time @client-state))
             (recur (client/get url all-options)))
 
           (and (ok-status? status) (valid-content-type? headers))
           (do
-            (tracef "Reconnecting after %s milliseconds..." @retry)
-            (Thread/sleep @retry)
+            (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
+            (Thread/sleep (:reconnection-time @client-state))
             (recur (client/get url all-options)))
 
           :else nil)))
