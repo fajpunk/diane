@@ -18,7 +18,8 @@
   stream represented by the given string"
   [string & [client-state]] 
   (let [stream (make-stream string)
-        event-chan (chan 10)]
+        event-chan (chan 10)
+        client-state (or client-state (atom {:last-event-id ""}))]
     (parse-event-stream stream event-chan "some-url" client-state)
     (close! event-chan)
     (loop [events []
@@ -63,13 +64,15 @@
         (events-for "id: some-id\ndata: Woohoo!\n\nid: another-id\ndata: Woohoo again!\n\ndata: No id on me.\n\n"))
 
 ;; Retry
-(let [client-state (atom {:reconnection-time 1000})]
+(let [client-state (atom {:reconnection-time 1000
+                          :last-event-id ""})]
   (expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id  ""}]
           (events-for "retry: 4000\ndata: Woohoo!\n\n" client-state))
   (expect 4000 (:reconnection-time @client-state)))
 
 ;; Retry with invalid value
-(let [client-state (atom {:reconnection-time 1000})]
+(let [client-state (atom {:reconnection-time 1000
+                          :last-event-id ""})]
   (expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id  ""}]
           (events-for "retry: 4000blah\ndata: Woohoo!\n\n" client-state))
   (expect 1000 (:reconnection-time @client-state)))

@@ -48,47 +48,48 @@
 (defn- process-field
   "Returns a vector of recur values based on the passed in values and the field
   in the line."
-  [line event-name data-buffer last-id client-state]
+  [line event-name data-buffer client-state]
   (let [[field value] (parse-field line)]
     (if (= value "")
-      [nil "" last-id]
+      [nil ""]
       (case field
-        "event" [value data-buffer last-id]
-        "data" [event-name (str data-buffer value "\n") last-id]
-        "id" [event-name data-buffer value]
+        "event" [value data-buffer]
+        "data" [event-name (str data-buffer value "\n")]
+        "id" (do 
+               (swap! client-state assoc :last-event-id value)
+               [event-name data-buffer])
         "retry" (do (set-reconnection-time! client-state value)
-                  [event-name data-buffer last-id])
-        [event-name data-buffer last-id]))))
+                  [event-name data-buffer])
+        [event-name data-buffer]))))
 
-(defn- build-event [origin event-name data-buffer last-id]
+(defn- build-event [origin event-name data-buffer client-state]
   (let [data (strip-trailing-newline data-buffer)]
     {:origin origin
      :data data
      :event (or event-name "message")
-     :last-event-id last-id}))
+     :last-event-id (:last-event-id @client-state)}))
   
 (defn- parse-event-stream [stream channel url client-state]
   (loop
     [line (.readLine stream)
      event-name nil
-     data-buffer "" 
-     last-id ""]
+     data-buffer ""]
     (cond
       (nil? line)  ; The stream is closed
-      [line event-name data-buffer last-id]
+      [line event-name data-buffer]
 
       (comment? line)
-      (recur (.readLine stream) event-name data-buffer last-id)
+      (recur (.readLine stream) event-name data-buffer)
 
       (blank-line? line)
       (do
         (when (not= data-buffer "")
-          (>!! channel (build-event url event-name data-buffer last-id)))
-        (recur (.readLine stream) nil "" last-id))
+          (>!! channel (build-event url event-name data-buffer client-state)))
+        (recur (.readLine stream) nil ""))
 
       :else
-      (let [[new-event-name new-data-buffer new-last-id] (process-field line event-name data-buffer last-id client-state)]
-        (recur (.readLine stream) new-event-name new-data-buffer new-last-id)))))
+      (let [[new-event-name new-data-buffer] (process-field line event-name data-buffer client-state)]
+        (recur (.readLine stream) new-event-name new-data-buffer)))))
 
 (defn- ok-status? [status]
   (= \2 (first (str status))))
