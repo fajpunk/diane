@@ -10,7 +10,6 @@
 ;; - Handle unicode chars up to 0x10FFFF
 ;; - Error handling and fault tolerance of any kind
 ;;   - At least close the gosh darn reader!!
-;; - Reconnect
 ;; - Validate event names
 ;; - More robust handling of clj-http options
 ;; - Allow buffer size(/type?) to be passed in
@@ -112,17 +111,21 @@
         retry (atom 3000)]
     (async/thread
       (loop [{:keys [status body headers]} (client/get url all-options)]
+        (tracef "Connected to %s" url)
         (cond 
           (and (= 200 status) (valid-content-type? headers))
           (do 
-            (parse-event-stream (io/reader body) events url retry)
+            (with-open [stream (io/reader body)]
+              (parse-event-stream stream events url retry))
+            (tracef "Reconnecting after %s milliseconds..." @retry)
             (Thread/sleep @retry)
-            (recur [client/get url all-options]))
+            (recur (client/get url all-options)))
 
           (and (ok-status? status) (valid-content-type? headers))
           (do
+            (tracef "Reconnecting after %s milliseconds..." @retry)
             (Thread/sleep @retry)
-            (recur [client/get url all-options]))
+            (recur (client/get url all-options)))
 
           :else nil)))
     events))

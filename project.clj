@@ -13,6 +13,7 @@
                              [lein-autoexpect "1.2.2"]]
                    :dependencies  [[http-kit "2.1.18"]
                                    [expectations  "2.0.6"]
-                                   [compojure  "1.1.8"]]
-                   :source-paths ["test_src"]
+                                   [compojure  "1.1.8"]
+                                   [org.clojure/tools.namespace  "0.2.5"]]
+                   :source-paths ["dev_src"]
                    :codox {:sources ["src"]}}})

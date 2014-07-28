@@ -16,16 +16,16 @@
 (defn events-for
   "Returns a vector of all of the events that would be put on a channel for
   stream represented by the given string"
-  ([string retry] (let [stream (make-stream string)
-                        event-chan (chan 10)]
-                    (parse-event-stream stream event-chan "some-url" retry)
-                    (close! event-chan)
-                    (loop [events []
-                           value (<!! event-chan)]
-                      (if (nil? value)
-                        events
-                        (recur (conj events value) (<!! event-chan))))))
-  ([string] (events-for string nil)))
+  [string & [retry]] 
+  (let [stream (make-stream string)
+        event-chan (chan 10)]
+    (parse-event-stream stream event-chan "some-url" retry)
+    (close! event-chan)
+    (loop [events []
+           value (<!! event-chan)]
+      (if (nil? value)
+        events
+        (recur (conj events value) (<!! event-chan))))))
 
 ;; An event
 (expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id ""}]
