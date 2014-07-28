@@ -11,10 +11,10 @@
 ;; - Error handling and fault tolerance of any kind
 ;;   - At least close the gosh darn reader!!
 ;; - Validate event names
-;; - More robust handling of clj-http options
 ;; - Allow buffer size(/type?) to be passed in
 ;; - Handle different line endings (Maybe does this already?)
 ;; - Handle all of the HTTP processing model in section 5 of the spec
+;;   - Allow client to be closed
 ;; - Indicate state of connection
 ;; - Redirects exactly according to the spec
 ;;   - just automatically follows them for now, but will always request
@@ -97,6 +97,11 @@
 (defn- valid-content-type? [headers]
   (= "text/event-stream" (get headers "Content-Type")))
 
+(defn- wait-for-reconnect! [client-state]
+  (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
+  (swap! client-state assoc :ready-state (:connecting ready-state-map))
+  (Thread/sleep (:reconnection-time @client-state)))
+
 (def ready-state-map {:connecting 0
                       :open 1
                       :closed 2})
@@ -124,14 +129,12 @@
           (do 
             (with-open [stream (io/reader body)]
               (parse-event-stream stream events url client-state))
-            (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
-            (Thread/sleep (:reconnection-time @client-state))
+            (wait-for-reconnect! client-state)
             (recur (client/get url all-options)))
 
           (and (ok-status? status) (valid-content-type? headers))
           (do
-            (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
-            (Thread/sleep (:reconnection-time @client-state))
+            (wait-for-reconnect! client-state)
             (recur (client/get url all-options)))
 
           :else nil)))
