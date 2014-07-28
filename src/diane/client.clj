@@ -97,14 +97,17 @@
 (defn- valid-content-type? [headers]
   (= "text/event-stream" (get headers "Content-Type")))
 
+(def ready-state-map {:connecting 0
+                      :open 1
+                      :closed 2})
+
 (defn- wait-for-reconnect! [client-state]
   (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
   (swap! client-state assoc :ready-state (:connecting ready-state-map))
   (Thread/sleep (:reconnection-time @client-state)))
 
-(def ready-state-map {:connecting 0
-                      :open 1
-                      :closed 2})
+(defn- reconnect-options [options client-state]
+  (assoc-in options [:headers "Last-Event-ID"] (:last-event-id @client-state)))
 
 (defn subscribe
   "Returns a channel onto which will be put Server Side Events from the stream
@@ -130,12 +133,12 @@
             (with-open [stream (io/reader body)]
               (parse-event-stream stream events url client-state))
             (wait-for-reconnect! client-state)
-            (recur (client/get url all-options)))
+            (recur (client/get url (reconnect-options all-options client-state))))
 
           (and (ok-status? status) (valid-content-type? headers))
           (do
             (wait-for-reconnect! client-state)
-            (recur (client/get url all-options)))
+            (recur (client/get url (reconnect-options all-options client-state))))
 
           :else nil)))
     events))
