@@ -29,28 +29,32 @@
         (recur (conj events value) (<!! event-chan))))))
 
 ;; An event
-(expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id ""}]
+(expect [{:origin "some-url", :data "Woohoo!", :event "message", :last-event-id ""}]
         (events-for "data: Woohoo!\n\n"))
 
+;; An event with no space
+(expect [{:origin "some-url", :data "Woohoo!", :event "message", :last-event-id ""}]
+        (events-for "data:Woohoo!\n\n"))
+
 ;; Two events
-(expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id ""}
-         {:origin  "some-url", :data  "Woohoo again!", :event  "message", :last-event-id ""}]
+(expect [{:origin "some-url", :data "Woohoo!", :event "message", :last-event-id ""}
+         {:origin "some-url", :data "Woohoo again!", :event "message", :last-event-id ""}]
         (events-for "data: Woohoo!\n\ndata: Woohoo again!\n\n"))
 
 ;; Multiline event
-(expect [{:origin  "some-url", :data  "Woohoo!\nWoohoo more!\nand more!", :event  "message", :last-event-id ""}]
+(expect [{:origin "some-url", :data "Woohoo!\nWoohoo more!\nand more!", :event "message", :last-event-id ""}]
         (events-for "data: Woohoo!\ndata: Woohoo more!\ndata: and more!\n\n"))
 
 ;; Named event
-(expect [{:origin  "some-url", :data  "Woohoo!\nWoohoo more!\nand more!", :event  "my-event", :last-event-id ""}]
+(expect [{:origin "some-url", :data "Woohoo!\nWoohoo more!\nand more!", :event "my-event", :last-event-id ""}]
         (events-for "event: my-event\ndata: Woohoo!\ndata: Woohoo more!\ndata: and more!\n\n"))
 
 ;; Empty event
-(expect []
+(expect [{:origin "some-url", :data "" , :event "my-event", :last-event-id ""}]
         (events-for "event: my-event\ndata\n\n"))
 
 ;; Empty event with colon
-(expect []
+(expect [{:origin "some-url", :data "" , :event "my-event", :last-event-id ""}]
         (events-for "event: my-event\ndata:\n\n"))
 
 ;; A comment
@@ -58,21 +62,22 @@
         (events-for ":a comment"))
 
 ;; Events with ids
-(expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id "some-id"}
-         {:origin  "some-url", :data  "Woohoo again!", :event  "message", :last-event-id "another-id"}
-         {:origin  "some-url", :data  "No id on me.", :event  "message", :last-event-id  "another-id"}]
-        (events-for "id: some-id\ndata: Woohoo!\n\nid: another-id\ndata: Woohoo again!\n\ndata: No id on me.\n\n"))
+(expect [{:origin "some-url", :data "Woohoo!", :event "message", :last-event-id "some-id"}
+         {:origin "some-url", :data "Woohoo again!", :event "message", :last-event-id "another-id"}
+         {:origin "some-url", :data "No id on me.", :event "message", :last-event-id "another-id"}
+         {:origin "some-url", :data "No id for reals!", :event "message", :last-event-id ""}]
+        (events-for "id: some-id\ndata: Woohoo!\n\nid: another-id\ndata: Woohoo again!\n\ndata: No id on me.\n\nid\ndata: No id for reals!\n\n"))
 
 ;; Retry
 (let [client-state (atom {:reconnection-time 1000
                           :last-event-id ""})]
-  (expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id  ""}]
+  (expect [{:origin "some-url", :data "Woohoo!", :event "message", :last-event-id ""}]
           (events-for "retry: 4000\ndata: Woohoo!\n\n" client-state))
   (expect 4000 (:reconnection-time @client-state)))
 
 ;; Retry with invalid value
 (let [client-state (atom {:reconnection-time 1000
                           :last-event-id ""})]
-  (expect [{:origin  "some-url", :data  "Woohoo!", :event  "message", :last-event-id  ""}]
+  (expect [{:origin "some-url", :data "Woohoo!", :event "message", :last-event-id ""}]
           (events-for "retry: 4000blah\ndata: Woohoo!\n\n" client-state))
   (expect 1000 (:reconnection-time @client-state)))

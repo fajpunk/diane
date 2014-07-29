@@ -33,7 +33,7 @@
   (last (split value #"^ ")))
 
 (defn- strip-trailing-newline [value]
-  (first (split value #"\n$")))
+  (or (first (split value #"\n$")) ""))
 
 (defn- parse-field [line]
   (let [[field raw-value] (split line #":" 2)
@@ -50,29 +50,27 @@
   in the line."
   [line event-name data-buffer client-state]
   (let [[field value] (parse-field line)]
-    (if (= value "")
-      [nil ""]
-      (case field
-        "event" [value data-buffer]
-        "data" [event-name (str data-buffer value "\n")]
-        "id" (do 
-               (swap! client-state assoc :last-event-id value)
-               [event-name data-buffer])
-        "retry" (do (set-reconnection-time! client-state value)
+    (case field
+      "event" [value data-buffer]
+      "data" [event-name (str data-buffer value "\n")]
+      "id" (do 
+             (swap! client-state assoc :last-event-id value)
+             [event-name data-buffer])
+      "retry" (do (set-reconnection-time! client-state value)
                   [event-name data-buffer])
-        [event-name data-buffer]))))
+      [event-name data-buffer])))
 
 (defn- build-event [origin event-name data-buffer client-state]
   (let [data (strip-trailing-newline data-buffer)]
     {:origin origin
      :data data
-     :event (or event-name "message")
+     :event (if (empty? event-name) "message" event-name)
      :last-event-id (:last-event-id @client-state)}))
   
 (defn- parse-event-stream [stream channel url client-state]
   (loop
     [line (.readLine stream)
-     event-name nil
+     event-name ""
      data-buffer ""]
     (cond
       (nil? line)  ; The stream is closed
@@ -85,7 +83,7 @@
       (do
         (when (not= data-buffer "")
           (>!! channel (build-event url event-name data-buffer client-state)))
-        (recur (.readLine stream) nil ""))
+        (recur (.readLine stream) "" ""))
 
       :else
       (let [[new-event-name new-data-buffer] (process-field line event-name data-buffer client-state)]
