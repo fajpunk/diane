@@ -130,7 +130,7 @@
   makes sense on the server side.
   "
   [url options]
-  (let [connection-manager (conn-mgr/make-regular-conn-manager)
+  (let [connection-manager (conn-mgr/make-regular-conn-manager {})
         default-options {:as :stream
                          :headers {"Cache-Control" "no-cache"}
                          :connection-manager connection-manager}
@@ -156,4 +156,4 @@
             (recur (client/get url (reconnect-options all-options client-state))))
 
           :else nil)))
-    events client-state (close-fn events connection-manager client-state)))
+    [events client-state (close-fn events connection-manager client-state)]))
