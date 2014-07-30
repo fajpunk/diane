@@ -1,5 +1,6 @@
 (ns diane.client
   (:require [clj-http.client :as client]
+            [clj-http.conn-mgr :as conn-mgr]
             [taoensso.timbre :as timbre]
             [clojure.core.async :as async :refer [chan >!! close!]]
             [clojure.java.io :as io]
@@ -13,9 +14,6 @@
 ;; - Validate event names
 ;; - Allow buffer size(/type?) to be passed in
 ;; - Handle different line endings (Maybe does this already?)
-;; - Handle all of the HTTP processing model in section 5 of the spec
-;;   - Allow client to be closed
-;; - Indicate state of connection
 ;; - Redirects exactly according to the spec
 ;;   - just automatically follows them for now, but will always request
 ;;     the original URL on reconnect
@@ -110,23 +108,39 @@
       options
       (assoc-in options [:headers "Last-Event-ID"] (:last-event-id @client-state)))))
 
+(defn- close-fn
+  "Return a function that:
+    - Releases the http-connection
+    - Closes the events channel
+    - Sets the connection state to closed"
+  [channel connection-manager client-state]
+  (fn []
+    (conn-mgr/shutdown-manager connection-manager)
+    (close! channel)
+    (swap! client-state assoc :ready-state (:closed ready-state-map))))
+
 (defn subscribe
-  "Returns a channel onto which will be put Server Side Events from the stream
-  obtained by issueing a get request with clj-http to url with options.
+  "Returns:
+    - a channel onto which will be put Server Side Events from the stream
+      obtained by issuing a get request with clj-http to url with options
+    - an atom representing the state of the client
+    - and function with which to close the client
 
   Sticks as close to http://www.w3.org/TR/2009/WD-eventsource-20091029/ as
   makes sense on the server side.
   "
   [url options]
-  (let [default-options {:as :stream
-                         :headers {"Cache-Control" "no-cache"}}
+  (let [connection-manager (conn-mgr/make-regular-conn-manager)
+        default-options {:as :stream
+                         :headers {"Cache-Control" "no-cache"}
+                         :connection-manager connection-manager}
         all-options (merge default-options options)
         events (chan 25)
         client-state (atom {:ready-state (:connecting ready-state-map)
                             :last-event-id ""
                             :reconnection-time 3000})]
     (async/thread
-      (loop [{:keys [status body headers]} (client/get url all-options)]
+      (loop [{:keys [status body headers] :as response} (client/get url all-options)]
         (tracef "Connected to %s" url)
         (cond 
           (and (= 200 status) (valid-content-type? headers))
@@ -142,4 +156,4 @@
             (recur (client/get url (reconnect-options all-options client-state))))
 
           :else nil)))
-    events))
+    events client-state (close-fn events connection-manager client-state)))
