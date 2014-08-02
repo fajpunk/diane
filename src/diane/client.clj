@@ -150,6 +150,7 @@
 
           (and (= 200 status) (valid-content-type? headers))
           (do 
+            (swap! client-state assoc :ready-state :open)
             (with-open [stream (io/reader body)]
               (parse-event-stream stream events url client-state))
             (recur (reconnect-if-not-closed url all-options client-state)))
