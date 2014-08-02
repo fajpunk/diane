@@ -35,8 +35,9 @@
 (defn stop []
   (@stop-server-fn))
 
+(def port 9890)
 (defn start []
-  (reset! stop-server-fn (server/run-server test-server-app  {:port 9890})))
+  (reset! stop-server-fn (server/run-server test-server-app  {:port port})))
 
 (defn restart []
   (stop)

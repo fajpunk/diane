@@ -115,9 +115,16 @@
     - Sets the connection state to closed"
   [channel connection-manager client-state]
   (fn []
-    (conn-mgr/shutdown-manager connection-manager)
+    (swap! client-state assoc :ready-state (:closed ready-state-map))
     (close! channel)
-    (swap! client-state assoc :ready-state (:closed ready-state-map))))
+    (conn-mgr/shutdown-manager connection-manager)))
+
+(defn- reconnect-if-not-closed [url options client-state]
+  (if (not= (:closed ready-state-map) (:ready-state @client-state))
+    (do
+      (wait-for-reconnect! client-state)
+      (client/get url (reconnect-options options client-state)))
+    {}))
 
 (defn subscribe
   "Returns:
@@ -141,19 +148,19 @@
                             :reconnection-time 3000})]
     (async/thread
       (loop [{:keys [status body headers] :as response} (client/get url all-options)]
-        (tracef "Connected to %s" url)
         (cond 
+          (= (:ready-stae @client-state) (:closed ready-state-map))
+          nil
+
           (and (= 200 status) (valid-content-type? headers))
           (do 
             (with-open [stream (io/reader body)]
               (parse-event-stream stream events url client-state))
-            (wait-for-reconnect! client-state)
-            (recur (client/get url (reconnect-options all-options client-state))))
+            (recur (reconnect-if-not-closed url all-options client-state)))
 
           (and (ok-status? status) (valid-content-type? headers))
           (do
-            (wait-for-reconnect! client-state)
-            (recur (client/get url (reconnect-options all-options client-state))))
+            (recur (reconnect-if-not-closed url all-options client-state)))
 
           :else nil)))
     [events client-state (close-fn events connection-manager client-state)]))
