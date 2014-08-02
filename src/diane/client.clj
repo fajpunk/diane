@@ -93,13 +93,9 @@
 (defn- valid-content-type? [headers]
   (= "text/event-stream" (get headers "Content-Type")))
 
-(def ready-state-map {:connecting 0
-                      :open 1
-                      :closed 2})
-
 (defn- wait-for-reconnect! [client-state]
   (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
-  (swap! client-state assoc :ready-state (:connecting ready-state-map))
+  (swap! client-state assoc :ready-state :connecting)
   (Thread/sleep (:reconnection-time @client-state)))
 
 (defn- reconnect-options [options client-state]
@@ -115,12 +111,12 @@
     - Sets the connection state to closed"
   [channel connection-manager client-state]
   (fn []
-    (swap! client-state assoc :ready-state (:closed ready-state-map))
+    (swap! client-state assoc :ready-state :closed)
     (close! channel)
     (conn-mgr/shutdown-manager connection-manager)))
 
 (defn- reconnect-if-not-closed [url options client-state]
-  (if (not= (:closed ready-state-map) (:ready-state @client-state))
+  (if (not= :closed (:ready-state @client-state))
     (do
       (wait-for-reconnect! client-state)
       (client/get url (reconnect-options options client-state)))
@@ -143,13 +139,13 @@
                          :connection-manager connection-manager}
         all-options (merge default-options options)
         events (chan 25)
-        client-state (atom {:ready-state (:connecting ready-state-map)
+        client-state (atom {:ready-state :connecting
                             :last-event-id ""
                             :reconnection-time 3000})]
     (async/thread
       (loop [{:keys [status body headers] :as response} (client/get url all-options)]
         (cond 
-          (= (:ready-stae @client-state) (:closed ready-state-map))
+          (= (:ready-stae @client-state) :closed)
           nil
 
           (and (= 200 status) (valid-content-type? headers))

@@ -29,6 +29,6 @@
         (get-events 1 "/one-event"))
 
 ;; Multiple events
-(expect  [{:origin  "http://localhost:9890/multiple-events", :data  "woohoo!", :event  "message", :last-event-id  ""}
-          {:origin  "http://localhost:9890/multiple-events", :data  "woohoo again!", :event  "message", :last-event-id  ""}]
+(expect [{:origin  "http://localhost:9890/multiple-events", :data  "woohoo!", :event  "message", :last-event-id  ""}
+         {:origin  "http://localhost:9890/multiple-events", :data  "woohoo again!", :event  "message", :last-event-id  ""}]
         (get-events 2 "/multiple-events"))
