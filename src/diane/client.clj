@@ -93,32 +93,36 @@
 (defn- valid-content-type? [headers]
   (= "text/event-stream" (get headers "Content-Type")))
 
-(defn- wait-for-reconnect! [client-state]
-  (tracef "Reconnecting after %s milliseconds..." (:reconnection-time @client-state))
-  (swap! client-state assoc :ready-state :connecting)
-  (Thread/sleep (:reconnection-time @client-state)))
-
-(defn- reconnect-options [options client-state]
-  (let [last-event-id (:last-event-id @client-state)]
+(defn- reconnect-options [initial-options client-state]
+  (let [options (assoc initial-options :connection-manager (:conn-mgr client-state))
+        last-event-id (:last-event-id @client-state)]
     (if (empty? last-event-id)
       options
-      (assoc-in options [:headers "Last-Event-ID"] (:last-event-id @client-state)))))
+      (assoc-in options [:headers "Last-Event-ID"] last-event-id))))
 
-(defn- close-fn
+(defn- make-close-fn
   "Return a function that:
     - Releases the http-connection
     - Closes the events channel
     - Sets the connection state to closed"
-  [channel connection-manager client-state]
+  [channel client-state]
   (fn []
     (swap! client-state assoc :ready-state :closed)
     (close! channel)
-    (conn-mgr/shutdown-manager connection-manager)))
+    (conn-mgr/shutdown-manager (:conn-mgr @client-state))))
+
+(defn- wait-for-reconnect! [client-state]
+  (let [reconnection-time (:reconnection-time @client-state)]
+    (tracef "Reconnecting after %s milliseconds..." reconnection-time)
+    (swap! client-state assoc :ready-state :connecting)
+    (Thread/sleep reconnection-time)))
 
 (defn- reconnect-if-not-closed [url options client-state]
   (if (not= :closed (:ready-state @client-state))
     (do
+      (conn-mgr/shutdown-manager (:conn-mgr @client-state))
       (wait-for-reconnect! client-state)
+      (swap! client-state assoc :conn-mgr (conn-mgr/make-regular-conn-manager {}))
       (client/get url (reconnect-options options client-state)))
     {}))
 
@@ -135,15 +139,16 @@
   [url options]
   (let [connection-manager (conn-mgr/make-regular-conn-manager {})
         default-options {:as :stream
-                         :headers {"Cache-Control" "no-cache"}
-                         :connection-manager connection-manager}
+                         :headers {"Cache-Control" "no-cache"}}
         all-options (merge default-options options)
         events (chan 25)
         client-state (atom {:ready-state :connecting
                             :last-event-id ""
-                            :reconnection-time 3000})]
+                            :reconnection-time 3000
+                            :conn-mgr (conn-mgr/make-regular-conn-manager {})})
+        close-fn! (make-close-fn events client-state)]
     (async/thread
-      (loop [{:keys [status body headers] :as response} (client/get url all-options)]
+      (loop [{:keys [status body headers] :as response} (client/get url (assoc all-options :connection-manager (:conn-mgr @client-state)))]
         (cond 
           (= (:ready-stae @client-state) :closed)
           nil
@@ -159,5 +164,5 @@
           (do
             (recur (reconnect-if-not-closed url all-options client-state)))
 
-          :else nil)))
-    [events client-state (close-fn events connection-manager client-state)]))
+          :else (close-fn!))))
+    [events client-state close-fn!]))
