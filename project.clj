@@ -1,6 +1,8 @@
 (defproject diane "1.0.0"
   :description "Server-Side Server-Sent-Events client"
   :url "https://github.com/fajpunk/diane"
+  :scm {:name "git"
+        :url "https://github.com/fajpunk/diane.git"}
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.6.0"]
