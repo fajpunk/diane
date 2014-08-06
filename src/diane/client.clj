@@ -119,7 +119,6 @@
 (defn- reconnect-if-not-closed [url options state]
   (if (not= :closed (:ready-state @state))
     (do
-      (conn-mgr/shutdown-manager (:conn-mgr @state))
       (wait-for-reconnect! state)
       (swap! state assoc :conn-mgr (conn-mgr/make-regular-conn-manager {}))
       (client/get url (reconnect-options options state)))
@@ -146,10 +145,12 @@
         state (atom {:ready-state :connecting
                             :last-event-id ""
                             :reconnection-time 3000
+                            :response {}
                             :conn-mgr (conn-mgr/make-regular-conn-manager {})})
         close-fn! (make-close-fn events state)]
     (async/thread
       (loop [{:keys [status body headers] :as response} (client/get url (assoc options :connection-manager (:conn-mgr @state)))]
+        (swap! state assoc :response response)
         (cond 
           (= (:ready-state @state) :closed)
           nil
@@ -162,8 +163,7 @@
             (recur (reconnect-if-not-closed url options state)))
 
           (and (ok-status? status) (valid-content-type? headers))
-          (do
-            (recur (reconnect-if-not-closed url options state)))
+          (recur (reconnect-if-not-closed url options state))
 
           :else (close-fn!))))
     [events state close-fn!]))

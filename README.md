@@ -31,6 +31,10 @@ My use case for writing this was to get events from my Spark Core on the server 
   :etc
   (println "Connection state: " (:ready-state @state))  ;; See client.clj for other state
   (close))
+
+;; {:origin "https://api.spark.io/v1/events, :data  "event data!", :event "an-event-type", :last-event-id  ""}
+;; {:origin "https://api.spark.io/v1/events, :data  "more event data!", :event "another-event-type", :last-event-id  ""}
+;; {:origin "https://api.spark.io/v1/events, :data  "event data again!", :event "yet-another-event-type", :last-event-id  ""}
 ```
 
 ## License

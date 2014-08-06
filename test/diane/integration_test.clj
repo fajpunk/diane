@@ -9,7 +9,7 @@
  (str "http://localhost:" test-server/port path))
 
 (defn subscribe [path]
-  (client/subscribe (url path)))
+  (client/subscribe (url path) {:save-request true}))
 
 (defn get-n [n events]
   (doall (repeatedly n #(<!! events))))
@@ -52,13 +52,25 @@
           (close)
           @result))
 
-;; Last id
+;; Last event id - state
 (expect "some-id"
         (let [[events state close] (subscribe "/last-event-id")]
           (get-n 2 events)
           (close)
           (:last-event-id @state)))
 
+;; Last event id - header on reconnect request
+(expect "some-id"
+        (let [[events state close] (subscribe "/last-event-id")
+              captured-response (atom {})]
+          (get-n 2 events)
+          (conn-mgr/shutdown-manager (:conn-mgr @state))
+          (get-n 1 events)
+          (reset! captured-response (:response @state))
+          (close)
+          (get-in @captured-response [:request :headers "Last-Event-ID"])))
+          
+;; Last event id - appears in event
 (expect [{:origin (url "/last-event-id"), :data  "woohoo!", :event  "message", :last-event-id  ""}
          {:origin (url "/last-event-id"), :data  "woohoo again!", :event  "message", :last-event-id "some-id"}]
 
@@ -99,6 +111,3 @@
           (reset! captured-state (:ready-state @state))
           (close)
           @captured-state))
-
-;; FIXME
-;; Reconnect with last-event-id set includes correct header
