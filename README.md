@@ -9,6 +9,12 @@ Server-Side Server-Sent-Event client
 Because the alternative was server-side-server-sent-event-client, or sssse, or
 s4e, or some such other terrible name.
 
+## Installation
+
+With Leiningen:
+
+[![Clojars Project](http://clojars.org/diane/latest-version.svg)](http://clojars.org/diane)
+
 ## Usage
 
 * [API Docs][]
