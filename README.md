@@ -28,9 +28,10 @@ My use case for writing this was to get events from my Spark Core on the server 
   (println (<!! events))
   (println (<!! events))
   (println (<!! events))
-  (println "Connection state: " (:ready-state @state))  ;; See client.clj for other state
   :etc
+  (println "Connection state: " (:ready-state @state))  ;; See client.clj for other state
   (close))
+```
 
 ## License
 
