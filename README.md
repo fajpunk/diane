@@ -13,6 +13,25 @@ s4e, or some such other terrible name.
 
 * [API Docs][]
 
+My use case for writing this was to get events from my Spark Core on the server side
+(this was before they added the functionality to call an arbitrary url when an event
+ is sent):
+
+```clojure
+(require '[clojure.core.async :refer [<!!]])
+(require '[diane.client :refer [subscribe]])
+
+(def access-token "xxxxxxxxx")
+
+(let [[events state close] (subscribe "https://api.spark.io/v1/events"
+                            {:headers {"Authorization" (str "Bearer " access-token)}})]
+  (println (<!! events))
+  (println (<!! events))
+  (println (<!! events))
+  (println "Connection state: " (:ready-state @state))  ;; See client.clj for other state
+  :etc
+  (close))
+
 ## License
 
 Copyright © 2014 Dan Fuchs

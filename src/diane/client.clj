@@ -18,11 +18,9 @@
 ;;   - just automatically follows them for now, but will always request
 ;;     the original URL on reconnect
 
+;; Parsing stuff
 (defn- comment? [line]
   (= (first line) \:))
-
-(defn- blank-line? [line]
-  (= line ""))
 
 (defn- field? [line]
   (.contains line ":"))
@@ -77,7 +75,7 @@
       (comment? line)
       (recur (.readLine stream) event-name data-buffer)
 
-      (blank-line? line)
+      (empty? line)
       (do
         (when (not= data-buffer "")
           (>!! channel (build-event url event-name data-buffer client-state)))
@@ -100,6 +98,7 @@
       options
       (assoc-in options [:headers "Last-Event-ID"] last-event-id))))
 
+;; HTTP stuff
 (defn- make-close-fn
   "Return a function that:
     - Releases the http-connection
@@ -136,11 +135,12 @@
   Sticks as close to http://www.w3.org/TR/2009/WD-eventsource-20091029/ as
   makes sense on the server side.
   "
-  [url options]
+  [url & [options]]
   (let [connection-manager (conn-mgr/make-regular-conn-manager {})
+        given-options (or options {})
         default-options {:as :stream
                          :headers {"Cache-Control" "no-cache"}}
-        all-options (merge default-options options)
+        all-options (merge default-options given-options)
         events (chan 25)
         client-state (atom {:ready-state :connecting
                             :last-event-id ""

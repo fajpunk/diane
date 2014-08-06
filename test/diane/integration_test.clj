@@ -5,31 +5,38 @@
             [test-server :as server]
             [clojure.core.async :as async :refer [chan <!! close! alts!! timeout]]))
 
-(defn get-events
-  "Subscribe to an event stream at the test server path and return a vector
-  with n events from the stream"
-  [n path]
-  (let [[events state close] (client/subscribe (str "http://localhost:" test-server/port path) {})
-        n-results (async/take n events)
-        all-results (<!! (async/into [] n-results))]
-    (close)
-    all-results))
+(defn url [path]
+ (str "http://localhost:" test-server/port path))
+
+(defn subscribe [path]
+  (client/subscribe (url path)))
 
 ;; One event
-(expect [{:origin  "http://localhost:9890/one-event", :data  "woohoo!", :event  "message", :last-event-id  ""}]
-        (get-events 1 "/one-event"))
+(expect [{:origin (url "/one-event") , :data  "woohoo!", :event  "message", :last-event-id  ""}]
+
+        (let [[events state close] (subscribe "/one-event")
+              result (atom [])]
+          (swap! result conj (<!! events))
+          (close)
+          @result))
 
 ;; Multiple events
-(expect [{:origin  "http://localhost:9890/multiple-events", :data  "woohoo!", :event  "message", :last-event-id  ""}
-         {:origin  "http://localhost:9890/multiple-events", :data  "woohoo again!", :event  "message", :last-event-id  ""}]
-        (get-events 2 "/multiple-events"))
+(expect [{:origin (url "/multiple-events"), :data  "woohoo!", :event  "message", :last-event-id  ""}
+         {:origin (url "/multiple-events"), :data  "woohoo again!", :event  "message", :last-event-id  ""}]
+
+        (let [[events state close] (subscribe "/multiple-events")
+              result (atom [])]
+          (swap! result conj (<!! events))
+          (swap! result conj (<!! events))
+          (close)
+          @result))
 
 ;; Multiple events and reconnect
-(expect [{:origin  "http://localhost:9890/multiple-events", :data  "woohoo!", :event  "message", :last-event-id  ""}
-         {:origin  "http://localhost:9890/multiple-events", :data  "woohoo again!", :event  "message", :last-event-id  ""}
-         {:origin  "http://localhost:9890/multiple-events", :data  "woohoo!", :event  "message", :last-event-id  ""}]
+(expect [{:origin (url "/multiple-events"), :data  "woohoo!", :event  "message", :last-event-id  ""}
+         {:origin (url "/multiple-events"), :data  "woohoo again!", :event  "message", :last-event-id  ""}
+         {:origin (url "/multiple-events"), :data  "woohoo!", :event  "message", :last-event-id  ""}]
 
-        (let [[events state close] (client/subscribe (str "http://localhost:" test-server/port "/multiple-events") {})
+        (let [[events state close] (subscribe "/multiple-events")
               result (atom [])]
           (swap! result conj (<!! events))
           (swap! result conj (<!! events))
@@ -40,17 +47,27 @@
 
 ;; Last id
 (expect "some-id"
-        (let [[events state close] (client/subscribe (str "http://localhost:" test-server/port "/last-event-id") {})]
+        (let [[events state close] (subscribe "/last-event-id")]
           (Thread/sleep 500)  ; wait for the response to come back
           (close)
           (:last-event-id @state)))
 
-;; Reconnect time
-(expect [{:origin  "http://localhost:9890/reconnect-time", :data  "woohoo!", :event  "message", :last-event-id  ""}
-         {:origin  "http://localhost:9890/reconnect-time", :data  "woohoo again!", :event  "message", :last-event-id  ""}
-         {:origin  "http://localhost:9890/reconnect-time", :data  "woohoo!", :event  "message", :last-event-id  ""}]
+(expect [{:origin (url "/last-event-id"), :data  "woohoo!", :event  "message", :last-event-id  ""}
+         {:origin (url "/last-event-id"), :data  "woohoo again!", :event  "message", :last-event-id "some-id"}]
 
-        (let [[events state close] (client/subscribe (str "http://localhost:" test-server/port "/reconnect-time") {})
+        (let [[events state close] (subscribe "/last-event-id")
+              result (atom [])]
+          (swap! result conj (<!! events))
+          (swap! result conj (<!! events))
+          (close)
+          @result))
+
+;; Reconnect time
+(expect [{:origin (url "/reconnect-time"), :data  "woohoo!", :event  "message", :last-event-id  ""}
+         {:origin (url "/reconnect-time"), :data  "woohoo again!", :event  "message", :last-event-id  ""}
+         {:origin (url "/reconnect-time"), :data  "woohoo!", :event  "message", :last-event-id  ""}]
+
+        (let [[events state close] (subscribe "/reconnect-time")
               result (atom [])]
           (swap! result conj (<!! events))
           (swap! result conj (<!! events))
@@ -60,8 +77,9 @@
           @result))
 
 ;; Non-200 2xx status
-(expect [{:origin  "http://localhost:9890/bad-good-status", :data  "woohoo!", :event  "message", :last-event-id  ""}]
-        (let [[events state close] (client/subscribe (str "http://localhost:" test-server/port "/bad-good-status") {})
+(expect [{:origin (url "/bad-good-status"), :data  "woohoo!", :event  "message", :last-event-id  ""}]
+
+        (let [[events state close] (subscribe "/bad-good-status")
               result (atom [])]
           (swap! result conj (<!! events))
           (close)
@@ -69,9 +87,13 @@
 
 ;; Bad content type
 (expect :closed
-        (let [[events state close] (client/subscribe (str "http://localhost:" test-server/port "/bad-content-type") {})
+
+        (let [[events state close] (subscribe "/bad-content-type")
               captured-state (atom nil)]
           (Thread/sleep 500)  ; wait for the response to come back
           (reset! captured-state (:ready-state @state))
           (close)
           @captured-state))
+
+;; FIXME
+;; Reconnect with last-event-id set includes correct header
