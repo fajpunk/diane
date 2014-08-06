@@ -138,9 +138,12 @@
   [url & [options]]
   (let [connection-manager (conn-mgr/make-regular-conn-manager {})
         given-options (or options {})
+        default-headers {"Cache-Control" "no-cache"}
+        all-headers (merge default-headers (:headers given-options))
+        processed-given-options (dissoc given-options :headers)
         default-options {:as :stream
-                         :headers {"Cache-Control" "no-cache"}}
-        all-options (merge default-options given-options)
+                         :headers all-headers}
+        all-options (merge default-options processed-given-options)
         events (chan 25)
         client-state (atom {:ready-state :connecting
                             :last-event-id ""
