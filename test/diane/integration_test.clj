@@ -11,12 +11,21 @@
 (defn subscribe [path]
   (client/subscribe (url path)))
 
+(defn get-n [n events]
+  (doall (repeatedly n #(<!! events))))
+
+(defn add-n-events
+  "result is an atom containing a collection.  Take n events off of the events
+  channel and add them to result"
+  [n events result]
+  (swap! result into (get-n n events)))
+
 ;; One event
 (expect [{:origin (url "/one-event") , :data  "woohoo!", :event  "message", :last-event-id  ""}]
 
         (let [[events state close] (subscribe "/one-event")
               result (atom [])]
-          (swap! result conj (<!! events))
+          (add-n-events 1 events result)
           (close)
           @result))
 
@@ -26,8 +35,7 @@
 
         (let [[events state close] (subscribe "/multiple-events")
               result (atom [])]
-          (swap! result conj (<!! events))
-          (swap! result conj (<!! events))
+          (add-n-events 2 events result)
           (close)
           @result))
 
@@ -38,17 +46,16 @@
 
         (let [[events state close] (subscribe "/multiple-events")
               result (atom [])]
-          (swap! result conj (<!! events))
-          (swap! result conj (<!! events))
+          (add-n-events 2 events result)
           (conn-mgr/shutdown-manager (:conn-mgr @state))
-          (swap! result conj (<!! events))
+          (add-n-events 1 events result)
           (close)
           @result))
 
 ;; Last id
 (expect "some-id"
         (let [[events state close] (subscribe "/last-event-id")]
-          (Thread/sleep 500)  ; wait for the response to come back
+          (get-n 2 events)
           (close)
           (:last-event-id @state)))
 
@@ -57,8 +64,7 @@
 
         (let [[events state close] (subscribe "/last-event-id")
               result (atom [])]
-          (swap! result conj (<!! events))
-          (swap! result conj (<!! events))
+          (add-n-events 2 events result)
           (close)
           @result))
 
@@ -69,8 +75,7 @@
 
         (let [[events state close] (subscribe "/reconnect-time")
               result (atom [])]
-          (swap! result conj (<!! events))
-          (swap! result conj (<!! events))
+          (add-n-events 2 events result)
           (conn-mgr/shutdown-manager (:conn-mgr @state))
           (swap! result conj (first (alts!! [events (timeout 1000)])))
           (close)
@@ -81,7 +86,7 @@
 
         (let [[events state close] (subscribe "/bad-good-status")
               result (atom [])]
-          (swap! result conj (<!! events))
+          (add-n-events 1 events result)
           (close)
           @result))
 

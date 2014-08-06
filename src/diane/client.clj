@@ -37,33 +37,33 @@
         value (strip-leading-space safe-value)]
     [field value]))
 
-(defn- set-reconnection-time! [client-state value]
+(defn- set-reconnection-time! [state value]
   (when (re-find #"^\d+$" value)
-    (swap! client-state assoc :reconnection-time (Integer. value))))
+    (swap! state assoc :reconnection-time (Integer. value))))
 
 (defn- process-field
   "Returns a vector of recur values based on the passed in values and the field
   in the line."
-  [line event-name data-buffer client-state]
+  [line event-name data-buffer state]
   (let [[field value] (parse-field line)]
     (case field
       "event" [value data-buffer]
       "data" [event-name (str data-buffer value "\n")]
       "id" (do 
-             (swap! client-state assoc :last-event-id value)
+             (swap! state assoc :last-event-id value)
              [event-name data-buffer])
-      "retry" (do (set-reconnection-time! client-state value)
+      "retry" (do (set-reconnection-time! state value)
                   [event-name data-buffer])
       [event-name data-buffer])))
 
-(defn- build-event [origin event-name data-buffer client-state]
+(defn- build-event [origin event-name data-buffer state]
   (let [data (strip-trailing-newline data-buffer)]
     {:origin origin
      :data data
      :event (if (empty? event-name) "message" event-name)
-     :last-event-id (:last-event-id @client-state)}))
+     :last-event-id (:last-event-id @state)}))
   
-(defn- parse-event-stream [stream channel url client-state]
+(defn- parse-event-stream [stream channel url state]
   (loop
     [line (.readLine stream)
      event-name ""
@@ -78,11 +78,11 @@
       (empty? line)
       (do
         (when (not= data-buffer "")
-          (>!! channel (build-event url event-name data-buffer client-state)))
+          (>!! channel (build-event url event-name data-buffer state)))
         (recur (.readLine stream) "" ""))
 
       :else
-      (let [[new-event-name new-data-buffer] (process-field line event-name data-buffer client-state)]
+      (let [[new-event-name new-data-buffer] (process-field line event-name data-buffer state)]
         (recur (.readLine stream) new-event-name new-data-buffer)))))
 
 (defn- ok-status? [status]
@@ -91,9 +91,9 @@
 (defn- valid-content-type? [headers]
   (= "text/event-stream" (get headers "Content-Type")))
 
-(defn- reconnect-options [initial-options client-state]
-  (let [options (assoc initial-options :connection-manager (:conn-mgr client-state))
-        last-event-id (:last-event-id @client-state)]
+(defn- reconnect-options [initial-options state]
+  (let [options (assoc initial-options :connection-manager (:conn-mgr state))
+        last-event-id (:last-event-id @state)]
     (if (empty? last-event-id)
       options
       (assoc-in options [:headers "Last-Event-ID"] last-event-id))))
@@ -104,29 +104,30 @@
     - Releases the http-connection
     - Closes the events channel
     - Sets the connection state to closed"
-  [channel client-state]
+  [channel state]
   (fn []
-    (swap! client-state assoc :ready-state :closed)
+    (swap! state assoc :ready-state :closed)
     (close! channel)
-    (conn-mgr/shutdown-manager (:conn-mgr @client-state))))
+    (conn-mgr/shutdown-manager (:conn-mgr @state))))
 
-(defn- wait-for-reconnect! [client-state]
-  (let [reconnection-time (:reconnection-time @client-state)]
+(defn- wait-for-reconnect! [state]
+  (let [reconnection-time (:reconnection-time @state)]
     (tracef "Reconnecting after %s milliseconds..." reconnection-time)
-    (swap! client-state assoc :ready-state :connecting)
+    (swap! state assoc :ready-state :connecting)
     (Thread/sleep reconnection-time)))
 
-(defn- reconnect-if-not-closed [url options client-state]
-  (if (not= :closed (:ready-state @client-state))
+(defn- reconnect-if-not-closed [url options state]
+  (if (not= :closed (:ready-state @state))
     (do
-      (conn-mgr/shutdown-manager (:conn-mgr @client-state))
-      (wait-for-reconnect! client-state)
-      (swap! client-state assoc :conn-mgr (conn-mgr/make-regular-conn-manager {}))
-      (client/get url (reconnect-options options client-state)))
+      (conn-mgr/shutdown-manager (:conn-mgr @state))
+      (wait-for-reconnect! state)
+      (swap! state assoc :conn-mgr (conn-mgr/make-regular-conn-manager {}))
+      (client/get url (reconnect-options options state)))
     {}))
 
 (defn subscribe
   "Returns:
+    [events-channel state-atom close-fn]
     - a channel onto which will be put Server Side Events from the stream
       obtained by issuing a get request with clj-http to url with options
     - an atom representing the state of the client
@@ -135,37 +136,34 @@
   Sticks as close to http://www.w3.org/TR/2009/WD-eventsource-20091029/ as
   makes sense on the server side.
   "
-  [url & [options]]
-  (let [connection-manager (conn-mgr/make-regular-conn-manager {})
-        given-options (or options {})
-        default-headers {"Cache-Control" "no-cache"}
-        all-headers (merge default-headers (:headers given-options))
-        processed-given-options (dissoc given-options :headers)
-        default-options {:as :stream
-                         :headers all-headers}
-        all-options (merge default-options processed-given-options)
-        events (chan 25)
-        client-state (atom {:ready-state :connecting
+  [url & [custom-options]]
+  (let [default-options {:as :stream
+                         :headers {"Cache-Control" "no-cache"}}
+        options (merge default-options 
+                       custom-options
+                       {:headers (merge (:headers default-options) (:headers custom-options))})
+        events (chan)
+        state (atom {:ready-state :connecting
                             :last-event-id ""
                             :reconnection-time 3000
                             :conn-mgr (conn-mgr/make-regular-conn-manager {})})
-        close-fn! (make-close-fn events client-state)]
+        close-fn! (make-close-fn events state)]
     (async/thread
-      (loop [{:keys [status body headers] :as response} (client/get url (assoc all-options :connection-manager (:conn-mgr @client-state)))]
+      (loop [{:keys [status body headers] :as response} (client/get url (assoc options :connection-manager (:conn-mgr @state)))]
         (cond 
-          (= (:ready-stae @client-state) :closed)
+          (= (:ready-state @state) :closed)
           nil
 
           (and (= 200 status) (valid-content-type? headers))
           (do 
-            (swap! client-state assoc :ready-state :open)
+            (swap! state assoc :ready-state :open)
             (with-open [stream (io/reader body)]
-              (parse-event-stream stream events url client-state))
-            (recur (reconnect-if-not-closed url all-options client-state)))
+              (parse-event-stream stream events url state))
+            (recur (reconnect-if-not-closed url options state)))
 
           (and (ok-status? status) (valid-content-type? headers))
           (do
-            (recur (reconnect-if-not-closed url all-options client-state)))
+            (recur (reconnect-if-not-closed url options state)))
 
           :else (close-fn!))))
-    [events client-state close-fn!]))
+    [events state close-fn!]))
