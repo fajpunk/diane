@@ -35,9 +35,12 @@ My use case for writing this was to get events from my Spark Core on the server 
   (println (<!! events))
   (println (<!! events))
   :etc
-  (println "Connection state: " (:ready-state @state))  ;; See client.clj for other state
+  (println "Connection state:" (:ready-state @state))
+  (println "Reconnection time (in ms):" (:reconnection-time @state))  ;; See client.clj for other state
   (close))
 
+;; Connection state: :open
+;; Reconnection time (in ms): 3000
 ;; {:origin "https://api.spark.io/v1/events, :data  "event data!", :event "an-event-type", :last-event-id  ""}
 ;; {:origin "https://api.spark.io/v1/events, :data  "more event data!", :event "another-event-type", :last-event-id  ""}
 ;; {:origin "https://api.spark.io/v1/events, :data  "event data again!", :event "yet-another-event-type", :last-event-id  ""}
