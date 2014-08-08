@@ -127,7 +127,7 @@
 (defn subscribe
   "Returns:
     [events-channel state-atom close-fn]
-    - a channel onto which will be put Server Side Events from the stream
+    - a channel onto which will be put Server Sent Events from the stream
       obtained by issuing a get request with clj-http to url with 
       custom-options
     - an atom representing the state of the client
